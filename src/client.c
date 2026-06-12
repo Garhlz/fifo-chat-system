@@ -85,7 +85,7 @@ static int command_with_reply(const server_config_t *cfg, request_type_t type,
         perror("mkfifo reply");
         return 1;
     }
-    int reply_fd = open(reply_fifo, O_RDWR | O_NONBLOCK);
+    int reply_fd = open(reply_fifo, O_RDWR);
     if (reply_fd < 0) {
         perror("open reply fifo");
         unlink(reply_fifo);
@@ -186,7 +186,7 @@ static int command_with_reply(const server_config_t *cfg, request_type_t type,
             unlink(reply_fifo);
             mkfifo(reply_fifo, 0600);
             {
-                int reply_fd = open(reply_fifo, O_RDWR | O_NONBLOCK);
+                int reply_fd = open(reply_fifo, O_RDWR);
                 if (reply_fd >= 0) {
                     if (send_request(cfg->msg_fifo, &m) == 0 && read_reply_fd(reply_fd, &resp) == 0)
                         print_response(&resp);
@@ -208,7 +208,7 @@ static int command_with_reply(const server_config_t *cfg, request_type_t type,
             unlink(reply_fifo);
             mkfifo(reply_fifo, 0600);
             {
-                int reply_fd = open(reply_fifo, O_RDWR | O_NONBLOCK);
+                int reply_fd = open(reply_fifo, O_RDWR);
                 if (reply_fd >= 0) {
                     if (send_request(cfg->logout_fifo, &q) == 0 && read_reply_fd(reply_fd, &resp) == 0)
                         print_response(&resp);

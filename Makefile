@@ -8,7 +8,10 @@ SERVER_SRC := src/server.c src/daemon.c src/thread_pool.c src/handlers.c src/use
 CLIENT_SRC := src/client.c $(COMMON)
 BOT_SRC := src/bot_manager.c $(COMMON)
 
-.PHONY: all clean
+TEST_BIN := $(BIN_DIR)/test_user_store
+TEST_UNIT_SRC := test/test_user_store.c src/user_store.c src/chat.c
+
+.PHONY: all clean test test_unit test_integration
 
 all: $(BIN_DIR)/chatserver $(BIN_DIR)/client $(BIN_DIR)/bot_manager
 
@@ -26,3 +29,15 @@ $(BIN_DIR)/bot_manager: $(BOT_SRC) | $(BIN_DIR)
 
 clean:
 	rm -rf $(BIN_DIR)
+
+$(TEST_BIN): $(TEST_UNIT_SRC) | $(BIN_DIR)
+	$(CC) $(CFLAGS) -o $@ $(TEST_UNIT_SRC) $(LDFLAGS)
+
+test_unit: $(TEST_BIN)
+	@echo "=== 运行 C 单元测试 ==="
+	./$(TEST_BIN)
+
+test_integration: all
+	@./test/test_flow.sh
+
+test: test_unit test_integration

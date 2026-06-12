@@ -41,7 +41,7 @@ static int request_reply(const server_config_t *cfg, const char *fifo, chat_requ
     if (join_fifo_name(reply_fifo, sizeof(reply_fifo), cfg->fifo_dir, name) < 0) return -1;
     unlink(reply_fifo);
     if (mkfifo(reply_fifo, 0600) < 0) return -1;
-    int reply_fd = open(reply_fifo, O_RDWR | O_NONBLOCK);
+    int reply_fd = open(reply_fifo, O_RDWR);
     if (reply_fd < 0) { unlink(reply_fifo); return -1; }
     snprintf(req->reply_fifo, sizeof(req->reply_fifo), "%s", reply_fifo);
     int rc = send_request(fifo, req);
