@@ -35,11 +35,8 @@ static int send_request(const char *fifo, const chat_request_t *req) {
     return rc;
 }
 
-static int read_reply(const char *reply_fifo, chat_response_t *resp) {
-    int fd = open(reply_fifo, O_RDONLY);
-    if (fd < 0) return -1;
+static int read_reply_fd(int fd, chat_response_t *resp) {
     int rc = read_full(fd, resp, sizeof(*resp));
-    close(fd);
     return rc == 0 ? 0 : -1;
 }
 
@@ -88,6 +85,12 @@ static int command_with_reply(const server_config_t *cfg, request_type_t type,
         perror("mkfifo reply");
         return 1;
     }
+    int reply_fd = open(reply_fifo, O_RDWR | O_NONBLOCK);
+    if (reply_fd < 0) {
+        perror("open reply fifo");
+        unlink(reply_fifo);
+        return 1;
+    }
     chat_request_t req;
     memset(&req, 0, sizeof(req));
     req.type = type;
@@ -104,12 +107,14 @@ static int command_with_reply(const server_config_t *cfg, request_type_t type,
     if (type == REQ_LOGIN) {
         if (build_user_fifo(user_fifo, sizeof(user_fifo), cfg->fifo_dir, username) < 0) {
             fprintf(stderr, "用户 FIFO 路径过长\n");
+            close(reply_fd);
             unlink(reply_fifo);
             return 1;
         }
         unlink(user_fifo);
         if (mkfifo(user_fifo, 0600) < 0) {
             perror("mkfifo user");
+            close(reply_fd);
             unlink(reply_fifo);
             return 1;
         }
@@ -120,6 +125,7 @@ static int command_with_reply(const server_config_t *cfg, request_type_t type,
     }
 
     if (send_request(target_fifo, &req) < 0) {
+        close(reply_fd);
         unlink(reply_fifo);
         if (user_fifo[0]) unlink(user_fifo);
         if (receiver_started) {
@@ -130,8 +136,9 @@ static int command_with_reply(const server_config_t *cfg, request_type_t type,
         return 1;
     }
     chat_response_t resp;
-    if (read_reply(reply_fifo, &resp) < 0) {
+    if (read_reply_fd(reply_fd, &resp) < 0) {
         fprintf(stderr, "读取服务器响应失败\n");
+        close(reply_fd);
         unlink(reply_fifo);
         if (user_fifo[0]) unlink(user_fifo);
         if (receiver_started) {
@@ -142,6 +149,7 @@ static int command_with_reply(const server_config_t *cfg, request_type_t type,
         return 1;
     }
     print_response(&resp);
+    close(reply_fd);
     unlink(reply_fifo);
 
     if (type != REQ_LOGIN || !resp.success) {
@@ -177,7 +185,14 @@ static int command_with_reply(const server_config_t *cfg, request_type_t type,
             snprintf(m.reply_fifo, sizeof(m.reply_fifo), "%s", reply_fifo);
             unlink(reply_fifo);
             mkfifo(reply_fifo, 0600);
-            if (send_request(cfg->msg_fifo, &m) == 0 && read_reply(reply_fifo, &resp) == 0) print_response(&resp);
+            {
+                int reply_fd = open(reply_fifo, O_RDWR | O_NONBLOCK);
+                if (reply_fd >= 0) {
+                    if (send_request(cfg->msg_fifo, &m) == 0 && read_reply_fd(reply_fd, &resp) == 0)
+                        print_response(&resp);
+                    close(reply_fd);
+                }
+            }
             unlink(reply_fifo);
         } else if (strcmp(line, "online") == 0) {
             char text[128];
@@ -192,7 +207,14 @@ static int command_with_reply(const server_config_t *cfg, request_type_t type,
             snprintf(q.reply_fifo, sizeof(q.reply_fifo), "%s", reply_fifo);
             unlink(reply_fifo);
             mkfifo(reply_fifo, 0600);
-            if (send_request(cfg->logout_fifo, &q) == 0 && read_reply(reply_fifo, &resp) == 0) print_response(&resp);
+            {
+                int reply_fd = open(reply_fifo, O_RDWR | O_NONBLOCK);
+                if (reply_fd >= 0) {
+                    if (send_request(cfg->logout_fifo, &q) == 0 && read_reply_fd(reply_fd, &resp) == 0)
+                        print_response(&resp);
+                    close(reply_fd);
+                }
+            }
             unlink(reply_fifo);
             break;
         } else if (line[0] != '\0') {

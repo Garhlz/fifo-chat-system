@@ -45,7 +45,8 @@ static void handle_register(const chat_request_t *req) {
 
 static void push_pending_messages(const chat_request_t *req) {
     chat_message_t msgs[64];
-    int n = user_take_pending(req->username, msgs, 64);
+    int n = user_peek_pending(req->username, msgs, 64);
+    int fail = 0;
     for (int i = 0; i < n; i++) {
         chat_response_t resp;
         char text[CHAT_MAX_TEXT];
@@ -57,8 +58,12 @@ static void push_pending_messages(const chat_request_t *req) {
         make_resp(&resp, 1, RESP_OFFLINE, msgs[i].sender, req->username, text);
         if (push_to_user_fifo(req->user_fifo, &resp) == 0) {
             log_server("event=offline_sent sender=%s receiver=%s state=sent", msgs[i].sender, req->username);
+        } else {
+            fail = 1;
+            log_server("event=offline_push_failed sender=%s receiver=%s", msgs[i].sender, req->username);
         }
     }
+    if (!fail && n > 0) user_mark_pending_sent(req->username);
 }
 
 static void handle_login(const chat_request_t *req) {

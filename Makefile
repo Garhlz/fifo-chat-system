@@ -1,6 +1,6 @@
 CC := gcc
-CFLAGS := -Wall -Wextra -g -Iinclude
-LDFLAGS := -lpthread
+CFLAGS := -Wall -Wextra -g -Iinclude -pthread
+LDFLAGS := -pthread
 
 BIN_DIR := bin
 COMMON := src/chat.c src/config.c src/fifo.c src/log.c

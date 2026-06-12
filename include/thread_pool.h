@@ -22,7 +22,7 @@ struct thread_pool {
     int size;
     int *idle_stack;
     int idle_top;
-    int stopping;
+    volatile int stopping;
     pthread_mutex_t mutex;
     pthread_cond_t idle_cond;
 };

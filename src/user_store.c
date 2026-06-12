@@ -1,5 +1,6 @@
 #include "user_store.h"
 #include <pthread.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -137,22 +138,33 @@ int user_get_fifo(const char *username, char *fifo_path, size_t len) {
     return 0;
 }
 
+static void append_text(char *buf, size_t len, size_t *used, const char *fmt, ...) {
+    if (*used >= len) return;
+    va_list ap;
+    va_start(ap, fmt);
+    int n = vsnprintf(buf + *used, len - *used, fmt, ap);
+    va_end(ap);
+    if (n > 0) {
+        if ((size_t)n >= len - *used) *used = len;
+        else *used += (size_t)n;
+    }
+}
+
 int user_online_list(char *buf, size_t len) {
     pthread_mutex_lock(&store_mutex);
     int count = 0;
+    for (int i = 0; i < CHAT_MAX_USERS; i++) {
+        if (users[i].registered && users[i].online) count++;
+    }
     size_t used = 0;
-    used += snprintf(buf + used, len > used ? len - used : 0, "在线用户: ");
+    append_text(buf, len, &used, "当前在线 %d 人; 在线用户: ", count);
+    int first = 1;
     for (int i = 0; i < CHAT_MAX_USERS; i++) {
         if (!users[i].registered || !users[i].online) continue;
-        count++;
-        used += snprintf(buf + used, len > used ? len - used : 0, "%s%s",
-                         count == 1 ? "" : ", ", users[i].username);
+        if (!first) append_text(buf, len, &used, ", ");
+        first = 0;
+        append_text(buf, len, &used, "%s", users[i].username);
     }
-    char prefix[64];
-    snprintf(prefix, sizeof(prefix), "当前在线 %d 人; ", count);
-    char old[CHAT_MAX_TEXT];
-    snprintf(old, sizeof(old), "%s", buf);
-    snprintf(buf, len, "%s%s", prefix, old);
     pthread_mutex_unlock(&store_mutex);
     return count;
 }
@@ -189,17 +201,27 @@ int user_save_offline(const char *sender, const char *receiver, const char *mess
     return -1;
 }
 
-int user_take_pending(const char *receiver, chat_message_t *out, int max) {
+int user_peek_pending(const char *receiver, chat_message_t *out, int max) {
     pthread_mutex_lock(&store_mutex);
     int n = 0;
     for (int i = 0; i < CHAT_MAX_OFFLINE_MESSAGES && n < max; i++) {
         if (offline_msgs[i].state == MSG_PENDING && strcmp(offline_msgs[i].receiver, receiver) == 0) {
             out[n++] = offline_msgs[i];
-            offline_msgs[i].state = MSG_SENT;
         }
     }
     pthread_mutex_unlock(&store_mutex);
     return n;
+}
+
+int user_mark_pending_sent(const char *receiver) {
+    pthread_mutex_lock(&store_mutex);
+    for (int i = 0; i < CHAT_MAX_OFFLINE_MESSAGES; i++) {
+        if (offline_msgs[i].state == MSG_PENDING && strcmp(offline_msgs[i].receiver, receiver) == 0) {
+            offline_msgs[i].state = MSG_SENT;
+        }
+    }
+    pthread_mutex_unlock(&store_mutex);
+    return 0;
 }
 
 int user_get_online_bots(char names[][CHAT_MAX_USERNAME], int max) {

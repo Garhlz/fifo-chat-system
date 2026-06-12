@@ -41,15 +41,14 @@ static int request_reply(const server_config_t *cfg, const char *fifo, chat_requ
     if (join_fifo_name(reply_fifo, sizeof(reply_fifo), cfg->fifo_dir, name) < 0) return -1;
     unlink(reply_fifo);
     if (mkfifo(reply_fifo, 0600) < 0) return -1;
+    int reply_fd = open(reply_fifo, O_RDWR | O_NONBLOCK);
+    if (reply_fd < 0) { unlink(reply_fifo); return -1; }
     snprintf(req->reply_fifo, sizeof(req->reply_fifo), "%s", reply_fifo);
     int rc = send_request(fifo, req);
     if (rc == 0) {
-        int fd = open(reply_fifo, O_RDONLY);
-        if (fd >= 0) {
-            rc = read_full(fd, resp, sizeof(*resp)) == 0 ? 0 : -1;
-            close(fd);
-        } else rc = -1;
+        rc = read_full(reply_fd, resp, sizeof(*resp)) == 0 ? 0 : -1;
     }
+    close(reply_fd);
     unlink(reply_fifo);
     return rc;
 }
@@ -105,7 +104,6 @@ static void save_bot_state(bot_t *bots, int n) {
 }
 
 static int add_bots(const server_config_t *cfg, int count) {
-    srandom((unsigned)time(NULL) ^ (unsigned)getpid());
     bot_t *live = calloc((size_t)count, sizeof(bot_t));
     if (!live) return 1;
     int live_count = 0;
@@ -174,6 +172,12 @@ static int del_bots(const server_config_t *cfg, int count) {
         return 1;
     }
     if (count > n) count = n;
+    for (int i = n - 1; i > 0; i--) {
+        int j = random() % (i + 1);
+        bot_t tmp = bots[i];
+        bots[i] = bots[j];
+        bots[j] = tmp;
+    }
     for (int i = 0; i < count; i++) {
         chat_request_t req;
         memset(&req, 0, sizeof(req));
@@ -199,6 +203,7 @@ int main(int argc, char **argv) {
         printf("数量必须为正整数\n");
         return 1;
     }
+    srandom((unsigned)time(NULL) ^ (unsigned)getpid());
     const char *conf = getenv("CHAT_CONFIG");
     if (!conf) conf = "config/server.conf";
     server_config_t cfg;
